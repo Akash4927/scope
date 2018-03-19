@@ -1,0 +1,380 @@
+---
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: maya-system
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: maya-io
+  namespace: maya-system
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: maya-io
+  namespace: maya-system
+subjects:
+- kind: ServiceAccount
+  name: maya-io
+  namespace: maya-system
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: maya-credentials-c49e234e
+  namespace: maya-system
+type: Opaque
+data:
+  url: "aHR0cHM6Ly9hcHAubWF5YW9ubGluZS5pby92Mw=="
+  access-key: "cmVnaXN0cmF0aW9uVG9rZW4="
+  secret-key: "NjM1N0UwNTk4OUEyRTdEOTczQTI6MTUxNDY3ODQwMDAwMDphVlVZazlLWGFzTEJ0M1h6MnlSYnpPQmgxaw=="
+
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cluster-register-c49e234e
+  namespace: maya-system
+spec:
+  serviceAccountName: maya-io
+  restartPolicy: Never
+  containers:
+    - name: cluster-register
+      image: mayadataio/cluster-register:staging-9165418
+      volumeMounts:
+      - name: maya-credentials
+        mountPath: /maya-credentials
+        readOnly: true
+  volumes:
+  - name: maya-credentials
+    secret:
+      secretName: maya-credentials-c49e234e
+
+---
+
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: maya-io-agent
+  namespace: maya-system
+spec:
+  template:
+    metadata:
+      labels:
+        app: maya
+        type: agent
+    spec:
+      containers:
+      - name: maya-io-agent
+        command:
+        - /run.sh
+        - k8srun
+        env:
+        - name: CATTLE_ORCHESTRATION
+          value: "kubernetes"
+        - name: CATTLE_SKIP_UPGRADE
+          value: "true"
+        - name: CATTLE_REGISTRATION_URL
+          value: https://app.mayaonline.io/v3/scripts/6357E05989A2E7D973A2:1514678400000:aVUYk9KXasLBt3Xz2yRbzOBh1k
+        - name: CATTLE_URL
+          value: "https://app.mayaonline.io/v3"
+        - name: CATTLE_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        image: mayadataio/maya-io-agent:staging-b20af63
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: rancher
+          mountPath: /var/lib/rancher
+        - name: rancher-storage
+          mountPath: /var/run/rancher/storage
+        - name: rancher-agent-state
+          mountPath: /var/lib/cattle
+        - name: docker-socket
+          mountPath: /var/run/docker.sock
+        - name: lib-modules
+          mountPath: /lib/modules
+          readOnly: true
+        - name: proc
+          mountPath: /host/proc
+        - name: dev
+          mountPath: /host/dev
+      hostNetwork: true
+      hostPID: true
+      volumes:
+      - name: rancher
+        hostPath:
+          path: /var/lib/rancher
+      - name: rancher-storage
+        hostPath:
+          path: /var/run/rancher/storage
+      - name: rancher-agent-state
+        hostPath:
+          path: /var/lib/cattle
+      - name: docker-socket
+        hostPath:
+          path: /var/run/docker.sock
+      - name: lib-modules
+        hostPath:
+          path: /lib/modules
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: dev
+        hostPath:
+          path: /dev
+  updateStrategy:
+    type: RollingUpdate
+
+---
+# Define the cortex retrieval jobs
+kind: ConfigMap
+metadata:
+  name: cortex-agent-config
+apiVersion: v1
+data:
+  prometheus.yml: |-
+    global:
+      external_labels:
+        slave: b9519622-8fcc-4efb-b480-e8f2cf2bbad7
+      scrape_interval: 5s
+      evaluation_interval: 5s
+    remote_write:
+    - url: 'https://app.mayaonline.io/maya-cortex-push/api/prom/push'
+      basic_auth:
+        username: 2991D25D333BD0AD487F
+        password: wcPRfhrM7bRhm7ePCvREZPdYcwA2k2wA1DALfAGY
+    remote_read:
+    - url: 'https://app.mayaonline.io/maya-cortex-pull/api/prom'
+      basic_auth:
+        username: 2991D25D333BD0AD487F
+        password: wcPRfhrM7bRhm7ePCvREZPdYcwA2k2wA1DALfAGY
+    scrape_configs:
+    - job_name: 'cluster_uuid_b9519622-8fcc-4efb-b480-e8f2cf2bbad7_cortex-agent-retriever'
+      scheme: http
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_name]
+        regex: cortex-agent-retriever
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: kubernetes_pod_name
+    - job_name: 'cluster_uuid_b9519622-8fcc-4efb-b480-e8f2cf2bbad7_openebs-volumes'
+      scheme: http
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_monitoring]
+        regex: volume_exporter_prometheus
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: kubernetes_pod_name
+      - source_labels: [__meta_kubernetes_pod_label_vsm]
+        action: replace
+        target_label: openebs_pv
+      - source_labels: [__meta_kubernetes_pod_container_port_number]
+        action: drop
+        regex: '(.*)9501'
+      - source_labels: [__meta_kubernetes_pod_container_port_number]
+        action: drop
+        regex: '(.*)3260'
+---
+# cortex-agent-deployment
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: cortex-agent
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: cortex-agent-retriever
+    spec:
+      serviceAccountName: openebs-maya-operator
+      containers:
+        - name: retrieval
+          image: prom/prometheus:v1.7.1
+          args:
+            - "-config.file=/etc/prometheus/prometheus.yml"
+            - "-web.listen-address=:80"
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: cortex-agent-volume
+              mountPath: /etc/prometheus
+      volumes:
+        - name: cortex-agent-volume
+          configMap:
+            name: cortex-agent-config
+---
+# cortex-agent-service
+apiVersion: v1
+kind: Service
+metadata:
+  name: cortex-agent-service
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+  selector:
+    name: cortex-agent-retriever
+---
+# maya-scope-deployment
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: apps/v1beta1
+    kind: Deployment
+    metadata:
+      name: weave-scope-app
+      annotations:
+        cloud.weave.works/launcher-info: |-
+          {
+            "original-request": {
+              "url": "/k8s/v1.8/scope.yaml",
+              "date": "Thu Feb 15 2018 07:28:10 GMT+0000 (UTC)"
+            },
+            "email-address": "support@weave.works"
+          }
+      labels:
+        name: weave-scope-app
+        app: weave-scope
+        weave-cloud-component: scope
+        weave-scope-component: app
+      namespace: maya-system
+    spec:
+      replicas: 1
+      revisionHistoryLimit: 2
+      template:
+        metadata:
+          labels:
+            name: weave-scope-app
+            app: weave-scope
+            weave-cloud-component: scope
+            weave-scope-component: app
+        spec:
+          containers:
+            - name: app
+              args:
+                - '--no-probe'
+              image: 'weaveworks/scope:1.7.3'
+              imagePullPolicy: IfNotPresent
+              ports:
+                - containerPort: 4040
+                  protocol: TCP
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: weave-scope-app
+      annotations:
+        cloud.weave.works/launcher-info: |-
+          {
+            "original-request": {
+              "url": "/k8s/v1.8/scope.yaml",
+              "date": "Thu Feb 15 2018 07:28:10 GMT+0000 (UTC)"
+            },
+            "email-address": "support@weave.works"
+          }
+      labels:
+        name: weave-scope-app
+        app: weave-scope
+        weave-cloud-component: scope
+        weave-scope-component: app
+      namespace: maya-system
+    spec:
+      ports:
+        - port: 80
+          protocol: TCP
+          targetPort: 4040
+      selector:
+        name: weave-scope-app
+        app: weave-scope
+        weave-cloud-component: scope
+        weave-scope-component: app
+  - apiVersion: extensions/v1beta1
+    kind: DaemonSet
+    metadata:
+      name: weave-scope-agent
+      annotations:
+        cloud.weave.works/launcher-info: |-
+          {
+            "original-request": {
+              "url": "/k8s/v1.8/scope.yaml",
+              "date": "Thu Feb 15 2018 07:28:10 GMT+0000 (UTC)"
+            },
+            "email-address": "support@weave.works"
+          }
+      labels:
+        name: weave-scope-agent
+        app: weave-scope
+        weave-cloud-component: scope
+        weave-scope-component: agent
+      namespace: maya-system
+    spec:
+      template:
+        metadata:
+          labels:
+            name: weave-scope-agent
+            app: weave-scope
+            weave-cloud-component: scope
+            weave-scope-component: agent
+        spec:
+          containers:
+            - name: scope-agent
+              args:
+                - '--no-app'
+                - '--probe.docker.bridge=docker0'
+                - '--probe.docker=true'
+                - '--probe.kubernetes=true'
+                - 'weave-scope-app.maya-system.svc.cluster.local:80'
+              env: []
+              image: 'weaveworks/scope:1.7.3'
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                privileged: true
+              volumeMounts:
+                - name: docker-socket
+                  mountPath: /var/run/docker.sock
+                - name: scope-plugins
+                  mountPath: /var/run/scope/plugins
+                - name: sys-kernel-debug
+                  mountPath: /sys/kernel/debug
+          dnsPolicy: ClusterFirstWithHostNet
+          hostNetwork: true
+          hostPID: true
+          serviceAccountName: maya-io
+          tolerations:
+            - effect: NoSchedule
+              operator: Exists
+          volumes:
+            - name: docker-socket
+              hostPath:
+                path: /var/run/docker.sock
+            - name: scope-plugins
+              hostPath:
+                path: /var/run/scope/plugins
+            - name: sys-kernel-debug
+              hostPath:
+                path: /sys/kernel/debug
+      updateStrategy:
+        type: RollingUpdate
