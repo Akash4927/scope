@@ -4,6 +4,7 @@ import (
 	"io"
 	"io/ioutil"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/weaveworks/scope/common/xfer"
 	"github.com/weaveworks/scope/probe/controls"
 	"github.com/weaveworks/scope/report"
@@ -15,6 +16,7 @@ const (
 	DeletePod = report.KubernetesDeletePod
 	ScaleUp   = report.KubernetesScaleUp
 	ScaleDown = report.KubernetesScaleDown
+	DeletePVC = report.KubernetesDeletePVC
 )
 
 // GetLogs is the control to get the logs for a kubernetes pod
@@ -52,6 +54,15 @@ func (r *Reporter) deletePod(req xfer.Request, namespaceID, podID string, _ []st
 	}
 }
 
+func (r *Reporter) deletePersistentVolumeClaim(req xfer.Request, namespaceID, persistentvolumeclaimID string) xfer.Response {
+	if err := r.client.DeletePVC(namespaceID, persistentvolumeclaimID); err != nil {
+		return xfer.ResponseError(err)
+	}
+	return xfer.Response{
+		RemovedNode: req.NodeID,
+	}
+}
+
 // CapturePod is exported for testing
 func (r *Reporter) CapturePod(f func(xfer.Request, string, string, []string) xfer.Response) func(xfer.Request) xfer.Response {
 	return func(req xfer.Request) xfer.Response {
@@ -64,6 +75,7 @@ func (r *Reporter) CapturePod(f func(xfer.Request, string, string, []string) xfe
 		r.client.WalkPods(func(p Pod) error {
 			if p.UID() == uid {
 				pod = p
+				logrus.Infof("POd UID matched")
 			}
 			return nil
 		})
@@ -95,6 +107,30 @@ func (r *Reporter) CaptureDeployment(f func(xfer.Request, string, string) xfer.R
 	}
 }
 
+// CapturePersistentVolumeClaim is exported for testing
+func (r *Reporter) CapturePersistentVolumeClaim(f func(xfer.Request, string, string) xfer.Response) func(xfer.Request) xfer.Response {
+	return func(req xfer.Request) xfer.Response {
+		uid, ok := report.ParsePersistentVolumeClaimNodeID(req.NodeID)
+		if !ok {
+			return xfer.ResponseErrorf("Invalid ID: %s", req.NodeID)
+		}
+		// find persistentvolumeclaim by UID
+		var persistentvolumeclaim PersistentVolumeClaim
+		logrus.Infof("PVC UID %+v", uid)
+		r.client.WalkPersistentVolumeClaims(func(p PersistentVolumeClaim) error {
+			if p.UID() == uid {
+				persistentvolumeclaim = p
+				logrus.Infof("PVC UID matched")
+			}
+			return nil
+		})
+		if persistentvolumeclaim == nil {
+			return xfer.ResponseErrorf("persistentvolumeclaim not found: %s", uid)
+		}
+		return f(req, persistentvolumeclaim.Namespace(), persistentvolumeclaim.Name())
+	}
+}
+
 // ScaleUp is the control to scale up a deployment
 func (r *Reporter) ScaleUp(req xfer.Request, namespace, id string) xfer.Response {
 	return xfer.ResponseError(r.client.ScaleUp(report.Deployment, namespace, id))
@@ -111,6 +147,7 @@ func (r *Reporter) registerControls() {
 		DeletePod: r.CapturePod(r.deletePod),
 		ScaleUp:   r.CaptureDeployment(r.ScaleUp),
 		ScaleDown: r.CaptureDeployment(r.ScaleDown),
+		DeletePVC: r.CapturePersistentVolumeClaim(r.deletePersistentVolumeClaim),
 	}
 	r.handlerRegistry.Batch(nil, controls)
 }
@@ -121,6 +158,7 @@ func (r *Reporter) deregisterControls() {
 		DeletePod,
 		ScaleUp,
 		ScaleDown,
+		DeletePVC,
 	}
 	r.handlerRegistry.Batch(controls, nil)
 }

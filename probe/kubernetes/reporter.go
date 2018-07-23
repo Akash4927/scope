@@ -436,6 +436,12 @@ func (r *Reporter) persistentVolumeClaimTopology() (report.Topology, []Persisten
 	result := report.MakeTopology().
 		WithMetadataTemplates(PersistentVolumeClaimMetadataTemplates).
 		WithTableTemplates(TableTemplates)
+	result.Controls.AddControl(report.Control{
+		ID:    DeletePVC,
+		Human: "Delete",
+		Icon:  "fa-trash-o",
+		Rank:  0,
+	})
 	err := r.client.WalkPersistentVolumeClaims(func(p PersistentVolumeClaim) error {
 		result.AddNode(p.GetNode())
 		persistentVolumeClaims = append(persistentVolumeClaims, p)

@@ -48,6 +48,7 @@ type Client interface {
 	DeletePod(namespaceID, podID string) error
 	ScaleUp(resource, namespaceID, id string) error
 	ScaleDown(resource, namespaceID, id string) error
+	DeletePVC(namespaceID, id string) error
 }
 
 type client struct {
@@ -414,6 +415,10 @@ func (c *client) GetLogs(namespaceID, podID string, containerNames []string) (io
 
 func (c *client) DeletePod(namespaceID, podID string) error {
 	return c.client.CoreV1().Pods(namespaceID).Delete(podID, &metav1.DeleteOptions{})
+}
+
+func (c *client) DeletePVC(namespaceID, persistentVolumeClaimID string) error {
+	return c.client.CoreV1().PersistentVolumeClaims(namespaceID).Delete(persistentVolumeClaimID, &metav1.DeleteOptions{})
 }
 
 func (c *client) ScaleUp(resource, namespaceID, id string) error {
