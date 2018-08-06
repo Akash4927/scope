@@ -128,6 +128,16 @@ var (
 		Provisioner: {ID: Provisioner, Label: "Provisioner", From: report.FromLatest, Priority: 3},
 	}
 
+	VolumeSnapshotMetadataTemplates = report.MetadataTemplates{
+		NodeType: {ID: NodeType, Label: "Type", From: report.FromLatest, Priority: 1},
+		Name:     {ID: Name, Label: "Name", From: report.FromLatest, Priority: 2},
+	}
+
+	VolumeSnapshotDataMetadataTemplates = report.MetadataTemplates{
+		NodeType: {ID: NodeType, Label: "Type", From: report.FromLatest, Priority: 1},
+		Name:     {ID: Name, Label: "Name", From: report.FromLatest, Priority: 2},
+	}
+
 	TableTemplates = report.TableTemplates{
 		LabelPrefix: {
 			ID:     LabelPrefix,
@@ -301,6 +311,14 @@ func (r *Reporter) Report() (report.Report, error) {
 	if err != nil {
 		return result, err
 	}
+	volumeSnapshotTopology, _, err := r.volumeSnapshotTopology()
+	if err != nil {
+		return result, err
+	}
+	volumeSnapshotDataTopology, _, err := r.volumeSnapshotDataTopology()
+	if err != nil {
+		return result, err
+	}
 	result.Pod = result.Pod.Merge(podTopology)
 	result.Service = result.Service.Merge(serviceTopology)
 	result.Host = result.Host.Merge(hostTopology)
@@ -312,6 +330,8 @@ func (r *Reporter) Report() (report.Report, error) {
 	result.PersistentVolume = result.PersistentVolume.Merge(persistentVolumeTopology)
 	result.PersistentVolumeClaim = result.PersistentVolumeClaim.Merge(persistentVolumeClaimTopology)
 	result.StorageClass = result.StorageClass.Merge(storageClassTopology)
+	result.VolumeSnapshot = result.VolumeSnapshot.Merge(volumeSnapshotTopology)
+	result.VolumeSnapshotData = result.VolumeSnapshotData.Merge(volumeSnapshotDataTopology)
 	return result, nil
 }
 
@@ -426,8 +446,14 @@ func (r *Reporter) persistentVolumeTopology() (report.Topology, []PersistentVolu
 	result := report.MakeTopology().
 		WithMetadataTemplates(PersistentVolumeMetadataTemplates).
 		WithTableTemplates(TableTemplates)
+	result.Controls.AddControl(report.Control{
+		ID:    CreateSnapshot,
+		Human: "Create snapshot",
+		Icon:  "fa-desktop",
+		Rank:  0,
+	})
 	err := r.client.WalkPersistentVolumes(func(p PersistentVolume) error {
-		result.AddNode(p.GetNode())
+		result.AddNode(p.GetNode(r.probeID))
 		persistentVolumes = append(persistentVolumes, p)
 		return nil
 	})
@@ -440,7 +466,7 @@ func (r *Reporter) persistentVolumeClaimTopology() (report.Topology, []Persisten
 		WithMetadataTemplates(PersistentVolumeClaimMetadataTemplates).
 		WithTableTemplates(TableTemplates)
 	err := r.client.WalkPersistentVolumeClaims(func(p PersistentVolumeClaim) error {
-		result.AddNode(p.GetNode())
+		result.AddNode(p.GetNode(r.probeID))
 		persistentVolumeClaims = append(persistentVolumeClaims, p)
 		return nil
 	})
@@ -453,11 +479,37 @@ func (r *Reporter) storageClassTopology() (report.Topology, []StorageClass, erro
 		WithMetadataTemplates(StorageClassMetadataTemplates).
 		WithTableTemplates(TableTemplates)
 	err := r.client.WalkStorageClasses(func(p StorageClass) error {
-		result.AddNode(p.GetNode())
+		result.AddNode(p.GetNode(r.probeID))
 		storageClasses = append(storageClasses, p)
 		return nil
 	})
 	return result, storageClasses, err
+}
+
+func (r *Reporter) volumeSnapshotTopology() (report.Topology, []VolumeSnapshot, error) {
+	volumeSnapshots := []VolumeSnapshot{}
+	result := report.MakeTopology().
+		WithMetadataTemplates(VolumeSnapshotMetadataTemplates).
+		WithTableTemplates(TableTemplates)
+	err := r.client.WalkVolumeSnapshots(func(p VolumeSnapshot) error {
+		result.AddNode(p.GetNode(r.probeID))
+		volumeSnapshots = append(volumeSnapshots, p)
+		return nil
+	})
+	return result, volumeSnapshots, err
+}
+
+func (r *Reporter) volumeSnapshotDataTopology() (report.Topology, []VolumeSnapshotData, error) {
+	volumeSnapshotDatas := []VolumeSnapshotData{}
+	result := report.MakeTopology().
+		WithMetadataTemplates(VolumeSnapshotDataMetadataTemplates).
+		WithTableTemplates(TableTemplates)
+	err := r.client.WalkVolumeSnapshotDatas(func(p VolumeSnapshotData) error {
+		result.AddNode(p.GetNode(r.probeID))
+		volumeSnapshotDatas = append(volumeSnapshotDatas, p)
+		return nil
+	})
+	return result, volumeSnapshotDatas, err
 }
 
 type labelledChild interface {

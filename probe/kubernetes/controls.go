@@ -11,10 +11,11 @@ import (
 
 // Control IDs used by the kubernetes integration.
 const (
-	GetLogs   = report.KubernetesGetLogs
-	DeletePod = report.KubernetesDeletePod
-	ScaleUp   = report.KubernetesScaleUp
-	ScaleDown = report.KubernetesScaleDown
+	GetLogs        = report.KubernetesGetLogs
+	CreateSnapshot = report.KubernetesCreateSnapshot
+	DeletePod      = report.KubernetesDeletePod
+	ScaleUp        = report.KubernetesScaleUp
+	ScaleDown      = report.KubernetesScaleDown
 )
 
 // GetLogs is the control to get the logs for a kubernetes pod
@@ -49,6 +50,38 @@ func (r *Reporter) deletePod(req xfer.Request, namespaceID, podID string, _ []st
 	}
 	return xfer.Response{
 		RemovedNode: req.NodeID,
+	}
+}
+
+func (r *Reporter) createSnapshot(req xfer.Request, persistentVolumeID string) xfer.Response {
+	_, err := r.client.CreateSnapshot(persistentVolumeID)
+	if err != nil {
+		return xfer.ResponseError(err)
+	}
+	return xfer.Response{
+		Value: req.Control,
+	}
+}
+
+// CapturePersistentVolume is exported for testing
+func (r *Reporter) CapturePersistentVolume(f func(xfer.Request, string) xfer.Response) func(xfer.Request) xfer.Response {
+	return func(req xfer.Request) xfer.Response {
+		uid, ok := report.ParsePersistentVolumeNodeID(req.NodeID)
+		if !ok {
+			return xfer.ResponseErrorf("Invalid ID: %s", req.NodeID)
+		}
+		// find pod by UID
+		var persistentVolume PersistentVolume
+		r.client.WalkPersistentVolumes(func(p PersistentVolume) error {
+			if p.UID() == uid {
+				persistentVolume = p
+			}
+			return nil
+		})
+		if persistentVolume == nil {
+			return xfer.ResponseErrorf("Pod not found: %s", uid)
+		}
+		return f(req, persistentVolume.Name())
 	}
 }
 
@@ -107,10 +140,11 @@ func (r *Reporter) ScaleDown(req xfer.Request, namespace, id string) xfer.Respon
 
 func (r *Reporter) registerControls() {
 	controls := map[string]xfer.ControlHandlerFunc{
-		GetLogs:   r.CapturePod(r.GetLogs),
-		DeletePod: r.CapturePod(r.deletePod),
-		ScaleUp:   r.CaptureDeployment(r.ScaleUp),
-		ScaleDown: r.CaptureDeployment(r.ScaleDown),
+		GetLogs:        r.CapturePod(r.GetLogs),
+		CreateSnapshot: r.CapturePersistentVolume(r.createSnapshot),
+		DeletePod:      r.CapturePod(r.deletePod),
+		ScaleUp:        r.CaptureDeployment(r.ScaleUp),
+		ScaleDown:      r.CaptureDeployment(r.ScaleDown),
 	}
 	r.handlerRegistry.Batch(nil, controls)
 }
@@ -118,6 +152,7 @@ func (r *Reporter) registerControls() {
 func (r *Reporter) deregisterControls() {
 	controls := []string{
 		GetLogs,
+		CreateSnapshot,
 		DeletePod,
 		ScaleUp,
 		ScaleDown,

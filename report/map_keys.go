@@ -53,6 +53,7 @@ const (
 	KubernetesDesiredReplicas      = "kubernetes_desired_replicas"
 	KubernetesNodeType             = "kubernetes_node_type"
 	KubernetesGetLogs              = "kubernetes_get_logs"
+	KubernetesCreateSnapshot       = "kubernetes_create_snapshot"
 	KubernetesDeletePod            = "kubernetes_delete_pod"
 	KubernetesScaleUp              = "kubernetes_scale_up"
 	KubernetesScaleDown            = "kubernetes_scale_down"
@@ -115,6 +116,8 @@ var commonKeys = map[string]string{
 	PersistentVolume:      PersistentVolume,
 	PersistentVolumeClaim: PersistentVolumeClaim,
 	StorageClass:          StorageClass,
+	VolumeSnapshot:        VolumeSnapshot,
+	VolumeSnapshotData:    VolumeSnapshotData,
 
 	HostNodeID:             HostNodeID,
 	ControlProbeID:         ControlProbeID,
