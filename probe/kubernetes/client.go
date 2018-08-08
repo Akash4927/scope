@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	snapcrdv1 "github.com/openebs/external-storage/snapshot/pkg/apis/volumesnapshot/v1"
 	snapshotclient "github.com/openebs/external-storage/snapshot/pkg/client/clientset/versioned"
+	"github.com/pborman/uuid"
 	apiappsv1beta1 "k8s.io/api/apps/v1beta1"
 	apibatchv1 "k8s.io/api/batch/v1"
 	apibatchv1beta1 "k8s.io/api/batch/v1beta1"
@@ -51,6 +53,7 @@ type Client interface {
 	GetLogs(namespaceID, podID string, containerNames []string) (io.ReadCloser, error)
 	CreateSnapshot(persistentVolumeID string) (*snapcrdv1.VolumeSnapshot, error)
 	DeletePod(namespaceID, podID string) error
+	DeleteVolumeSnapshot(namespaceID, volumeSnapshotID string) error
 	ScaleUp(resource, namespaceID, id string) error
 	ScaleDown(resource, namespaceID, id string) error
 }
@@ -456,6 +459,10 @@ func (c *client) DeletePod(namespaceID, podID string) error {
 	return c.client.CoreV1().Pods(namespaceID).Delete(podID, &metav1.DeleteOptions{})
 }
 
+func (c *client) DeleteVolumeSnapshot(namespaceID, volumeSnapshotID string) error {
+	return c.snapClient.VolumesnapshotV1().VolumeSnapshots(namespaceID).Delete(volumeSnapshotID, &metav1.DeleteOptions{})
+}
+
 func (c *client) CreateSnapshot(persistentVolumeID string) (*snapcrdv1.VolumeSnapshot, error) {
 	persistentVolume, err := c.client.CoreV1().PersistentVolumes().Get(persistentVolumeID, metav1.GetOptions{})
 	if err != nil {
@@ -463,26 +470,39 @@ func (c *client) CreateSnapshot(persistentVolumeID string) (*snapcrdv1.VolumeSna
 	}
 
 	var persistentVolumeClaimName string
+	namespaceID := "default"
 
 	if persistentVolume.Spec.ClaimRef != nil {
 		persistentVolumeClaimName = persistentVolume.Spec.ClaimRef.Name
 	}
 
+	persistentVolumeClaims, err := c.client.CoreV1().PersistentVolumeClaims("").List(metav1.ListOptions{})
+	for _, persistentVolumeClaim := range persistentVolumeClaims.Items {
+		if persistentVolumeClaim.GetName() == persistentVolumeClaimName {
+			if persistentVolumeClaim.GetNamespace() != "" {
+				namespaceID = persistentVolumeClaim.GetNamespace()
+			}
+			break
+		}
+	}
+
+	UID := strings.Split(uuid.New(), "-")
+
 	volumeSnapshot := &snapcrdv1.VolumeSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "snapshot-" + persistentVolume.Name,
-			Namespace: "default",
+			Name:      "snapshot-" + time.Now().Format("20060102150405") + "-" + UID[1],
+			Namespace: namespaceID,
 		},
 		Spec: snapcrdv1.VolumeSnapshotSpec{
 			PersistentVolumeClaimName: persistentVolumeClaimName,
 		},
 	}
 
-	createdVolumeSnapshot, err := c.snapClient.VolumesnapshotV1().VolumeSnapshots("default").Create(volumeSnapshot)
+	newVolumeSnapshot, err := c.snapClient.VolumesnapshotV1().VolumeSnapshots(namespaceID).Create(volumeSnapshot)
 	if err != nil {
 		return &snapcrdv1.VolumeSnapshot{}, err
 	}
-	return createdVolumeSnapshot, nil
+	return newVolumeSnapshot, nil
 }
 
 func (c *client) ScaleUp(resource, namespaceID, id string) error {

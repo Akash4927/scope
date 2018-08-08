@@ -81,6 +81,7 @@ const (
 	KubernetesMessage              = "kubernetes_message"
 	KubernetesVolumeName           = "kubernetes_volume_name"
 	KubernetesProvisioner          = "kubernetes_provisioner"
+	KubernetesDeleteVolumeSnapshot = "kubernetes_delete_volume_snapshot"
 	// probe/awsecs
 	ECSCluster             = "ecs_cluster"
 	ECSCreatedAt           = "ecs_created_at"

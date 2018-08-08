@@ -491,6 +491,12 @@ func (r *Reporter) volumeSnapshotTopology() (report.Topology, []VolumeSnapshot, 
 	result := report.MakeTopology().
 		WithMetadataTemplates(VolumeSnapshotMetadataTemplates).
 		WithTableTemplates(TableTemplates)
+	result.Controls.AddControl(report.Control{
+		ID:    DeleteVolumeSnapshot,
+		Human: "Delete",
+		Icon:  "fa-trash-o",
+		Rank:  0,
+	})
 	err := r.client.WalkVolumeSnapshots(func(p VolumeSnapshot) error {
 		result.AddNode(p.GetNode(r.probeID))
 		volumeSnapshots = append(volumeSnapshots, p)

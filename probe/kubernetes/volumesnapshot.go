@@ -28,5 +28,5 @@ func (p *volumeSnapshot) GetNode(probeID string) report.Node {
 		report.ControlProbeID: probeID,
 		NodeType:              "Volume Snapshot",
 		Name:                  p.GetName(),
-	})
+	}).WithLatestActiveControls(DeleteVolumeSnapshot)
 }
