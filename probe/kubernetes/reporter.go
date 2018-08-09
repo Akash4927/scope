@@ -32,7 +32,9 @@ const (
 	Status             = report.KubernetesStatus
 	Message            = report.KubernetesMessage
 	VolumeName         = report.KubernetesVolumeName
+	VolumeSnapshotName = report.KubernetesVolumeSnapshotName
 	Provisioner        = report.KubernetesProvisioner
+	SnapshotData       = report.KubernetesSnapshotData
 )
 
 // Exposed for testing
@@ -129,13 +131,17 @@ var (
 	}
 
 	VolumeSnapshotMetadataTemplates = report.MetadataTemplates{
-		NodeType: {ID: NodeType, Label: "Type", From: report.FromLatest, Priority: 1},
-		Name:     {ID: Name, Label: "Name", From: report.FromLatest, Priority: 2},
+		NodeType:     {ID: NodeType, Label: "Type", From: report.FromLatest, Priority: 1},
+		Namespace:    {ID: Namespace, Label: "Name", From: report.FromLatest, Priority: 2},
+		VolumeClaim:  {ID: VolumeClaim, Label: "Persistent volume claim", From: report.FromLatest, Priority: 3},
+		SnapshotData: {ID: SnapshotData, Label: "Volume snapshot data", From: report.FromLatest, Priority: 4},
+		VolumeName:   {ID: VolumeName, Label: "Persistent volume", From: report.FromLatest, Priority: 5},
 	}
 
 	VolumeSnapshotDataMetadataTemplates = report.MetadataTemplates{
-		NodeType: {ID: NodeType, Label: "Type", From: report.FromLatest, Priority: 1},
-		Name:     {ID: Name, Label: "Name", From: report.FromLatest, Priority: 2},
+		NodeType:           {ID: NodeType, Label: "Type", From: report.FromLatest, Priority: 1},
+		VolumeName:         {ID: VolumeName, Label: "Persistent volume", From: report.FromLatest, Priority: 2},
+		VolumeSnapshotName: {ID: VolumeSnapshotName, Label: "Volume snapshot", From: report.FromLatest, Priority: 3},
 	}
 
 	TableTemplates = report.TableTemplates{
@@ -446,12 +452,6 @@ func (r *Reporter) persistentVolumeTopology() (report.Topology, []PersistentVolu
 	result := report.MakeTopology().
 		WithMetadataTemplates(PersistentVolumeMetadataTemplates).
 		WithTableTemplates(TableTemplates)
-	result.Controls.AddControl(report.Control{
-		ID:    CreateSnapshot,
-		Human: "Create snapshot",
-		Icon:  "fa-desktop",
-		Rank:  0,
-	})
 	err := r.client.WalkPersistentVolumes(func(p PersistentVolume) error {
 		result.AddNode(p.GetNode(r.probeID))
 		persistentVolumes = append(persistentVolumes, p)
@@ -465,6 +465,12 @@ func (r *Reporter) persistentVolumeClaimTopology() (report.Topology, []Persisten
 	result := report.MakeTopology().
 		WithMetadataTemplates(PersistentVolumeClaimMetadataTemplates).
 		WithTableTemplates(TableTemplates)
+	result.Controls.AddControl(report.Control{
+		ID:    CreateSnapshot,
+		Human: "Create snapshot",
+		Icon:  "fa-desktop",
+		Rank:  0,
+	})
 	err := r.client.WalkPersistentVolumeClaims(func(p PersistentVolumeClaim) error {
 		result.AddNode(p.GetNode(r.probeID))
 		persistentVolumeClaims = append(persistentVolumeClaims, p)
@@ -491,12 +497,20 @@ func (r *Reporter) volumeSnapshotTopology() (report.Topology, []VolumeSnapshot, 
 	result := report.MakeTopology().
 		WithMetadataTemplates(VolumeSnapshotMetadataTemplates).
 		WithTableTemplates(TableTemplates)
+
+	result.Controls.AddControl(report.Control{
+		ID:    CloneSnapshot,
+		Human: "Clone",
+		Icon:  "fa-play",
+		Rank:  0,
+	})
 	result.Controls.AddControl(report.Control{
 		ID:    DeleteVolumeSnapshot,
 		Human: "Delete",
 		Icon:  "fa-trash-o",
-		Rank:  0,
+		Rank:  1,
 	})
+
 	err := r.client.WalkVolumeSnapshots(func(p VolumeSnapshot) error {
 		result.AddNode(p.GetNode(r.probeID))
 		volumeSnapshots = append(volumeSnapshots, p)

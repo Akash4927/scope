@@ -5,6 +5,10 @@ import (
 	"github.com/weaveworks/scope/report"
 )
 
+const (
+	SnapshotPVName = "SnapshotMetadata-PVName"
+)
+
 // VolumeSnapshot represent kubernetes VolumeSnapshot interface
 type VolumeSnapshot interface {
 	Meta
@@ -27,6 +31,8 @@ func (p *volumeSnapshot) GetNode(probeID string) report.Node {
 	return p.MetaNode(report.MakeVolumeSnapshotNodeID(p.UID())).WithLatests(map[string]string{
 		report.ControlProbeID: probeID,
 		NodeType:              "Volume Snapshot",
-		Name:                  p.GetName(),
-	}).WithLatestActiveControls(DeleteVolumeSnapshot)
+		VolumeClaim:           p.Spec.PersistentVolumeClaimName,
+		SnapshotData:          p.Spec.SnapshotDataName,
+		VolumeName:            p.GetLabels()[SnapshotPVName],
+	}).WithLatestActiveControls(CloneSnapshot, DeleteVolumeSnapshot)
 }

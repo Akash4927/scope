@@ -21,6 +21,7 @@ import (
 	apiextensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -51,7 +52,8 @@ type Client interface {
 	WatchPods(f func(Event, Pod))
 
 	GetLogs(namespaceID, podID string, containerNames []string) (io.ReadCloser, error)
-	CreateSnapshot(persistentVolumeID string) (*snapcrdv1.VolumeSnapshot, error)
+	CloneSnapshot(namespaceID, volumeSnapshotID string) error
+	CreateSnapshot(namespaceID, persistentVolumeClaimID string) error
 	DeletePod(namespaceID, podID string) error
 	DeleteVolumeSnapshot(namespaceID, volumeSnapshotID string) error
 	ScaleUp(resource, namespaceID, id string) error
@@ -463,29 +465,50 @@ func (c *client) DeleteVolumeSnapshot(namespaceID, volumeSnapshotID string) erro
 	return c.snapClient.VolumesnapshotV1().VolumeSnapshots(namespaceID).Delete(volumeSnapshotID, &metav1.DeleteOptions{})
 }
 
-func (c *client) CreateSnapshot(persistentVolumeID string) (*snapcrdv1.VolumeSnapshot, error) {
-	persistentVolume, err := c.client.CoreV1().PersistentVolumes().Get(persistentVolumeID, metav1.GetOptions{})
-	if err != nil {
-		return &snapcrdv1.VolumeSnapshot{}, err
-	}
+func (c *client) CloneSnapshot(namespaceID, volumeSnapshotID string) error {
+	UID := strings.Split(uuid.New(), "-")
 
-	var persistentVolumeClaimName string
-	namespaceID := "default"
+	scName := "snapshot-promoter"
+	claimSize := "5G"
 
-	if persistentVolume.Spec.ClaimRef != nil {
-		persistentVolumeClaimName = persistentVolume.Spec.ClaimRef.Name
-	}
-
-	persistentVolumeClaims, err := c.client.CoreV1().PersistentVolumeClaims("").List(metav1.ListOptions{})
-	for _, persistentVolumeClaim := range persistentVolumeClaims.Items {
-		if persistentVolumeClaim.GetName() == persistentVolumeClaimName {
-			if persistentVolumeClaim.GetNamespace() != "" {
-				namespaceID = persistentVolumeClaim.GetNamespace()
-			}
-			break
+	volumeSnapshot, _ := c.snapClient.VolumesnapshotV1().VolumeSnapshots(namespaceID).Get(volumeSnapshotID, metav1.GetOptions{})
+	if volumeSnapshot.Spec.PersistentVolumeClaimName != "" {
+		persistentVolumeClaim, _ := c.client.CoreV1().PersistentVolumeClaims(namespaceID).Get(volumeSnapshot.Spec.PersistentVolumeClaimName, metav1.GetOptions{})
+		storage := persistentVolumeClaim.Spec.Resources.Requests[apiv1.ResourceStorage]
+		if string(storage.String()) != "" {
+			claimSize = string(storage.String())
 		}
 	}
 
+	persistentVolumeClaim := &apiv1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      volumeSnapshotID + "-volume-claim" + "-" + UID[1],
+			Namespace: namespaceID,
+			Annotations: map[string]string{
+				"snapshot.alpha.kubernetes.io/snapshot": volumeSnapshotID,
+			},
+		},
+		Spec: apiv1.PersistentVolumeClaimSpec{
+			StorageClassName: &scName,
+			AccessModes: []apiv1.PersistentVolumeAccessMode{
+				apiv1.ReadWriteOnce,
+			},
+			Resources: apiv1.ResourceRequirements{
+				Requests: apiv1.ResourceList{
+					apiv1.ResourceName(apiv1.ResourceStorage): resource.MustParse(claimSize),
+				},
+			},
+		},
+	}
+
+	_, err := c.client.CoreV1().PersistentVolumeClaims(namespaceID).Create(persistentVolumeClaim)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *client) CreateSnapshot(namespaceID, persistentVolumeClaimID string) error {
 	UID := strings.Split(uuid.New(), "-")
 
 	volumeSnapshot := &snapcrdv1.VolumeSnapshot{
@@ -494,15 +517,15 @@ func (c *client) CreateSnapshot(persistentVolumeID string) (*snapcrdv1.VolumeSna
 			Namespace: namespaceID,
 		},
 		Spec: snapcrdv1.VolumeSnapshotSpec{
-			PersistentVolumeClaimName: persistentVolumeClaimName,
+			PersistentVolumeClaimName: persistentVolumeClaimID,
 		},
 	}
 
-	newVolumeSnapshot, err := c.snapClient.VolumesnapshotV1().VolumeSnapshots(namespaceID).Create(volumeSnapshot)
+	_, err := c.snapClient.VolumesnapshotV1().VolumeSnapshots(namespaceID).Create(volumeSnapshot)
 	if err != nil {
-		return &snapcrdv1.VolumeSnapshot{}, err
+		return err
 	}
-	return newVolumeSnapshot, nil
+	return nil
 }
 
 func (c *client) ScaleUp(resource, namespaceID, id string) error {

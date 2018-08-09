@@ -12,6 +12,7 @@ import (
 // Control IDs used by the kubernetes integration.
 const (
 	GetLogs              = report.KubernetesGetLogs
+	CloneSnapshot        = report.KubernetesCloneSnapshot
 	CreateSnapshot       = report.KubernetesCreateSnapshot
 	DeletePod            = report.KubernetesDeletePod
 	DeleteVolumeSnapshot = report.KubernetesDeleteVolumeSnapshot
@@ -45,14 +46,20 @@ func (r *Reporter) GetLogs(req xfer.Request, namespaceID, podID string, containe
 	}
 }
 
-func (r *Reporter) createSnapshot(req xfer.Request, persistentVolumeID string) xfer.Response {
-	_, err := r.client.CreateSnapshot(persistentVolumeID)
+func (r *Reporter) createSnapshot(req xfer.Request, namespaceID, persistentVolumeClaimID string) xfer.Response {
+	err := r.client.CreateSnapshot(namespaceID, persistentVolumeClaimID)
 	if err != nil {
 		return xfer.ResponseError(err)
 	}
-	return xfer.Response{
-		Value: req.Control,
+	return xfer.Response{}
+}
+
+func (r *Reporter) cloneSnapshot(req xfer.Request, namespaceID, volumeSnapshotID string) xfer.Response {
+	err := r.client.CloneSnapshot(namespaceID, volumeSnapshotID)
+	if err != nil {
+		return xfer.ResponseError(err)
 	}
+	return xfer.Response{}
 }
 
 func (r *Reporter) deletePod(req xfer.Request, namespaceID, podID string, _ []string) xfer.Response {
@@ -116,25 +123,26 @@ func (r *Reporter) CaptureDeployment(f func(xfer.Request, string, string) xfer.R
 	}
 }
 
-// CapturePersistentVolume is exported for testing
-func (r *Reporter) CapturePersistentVolume(f func(xfer.Request, string) xfer.Response) func(xfer.Request) xfer.Response {
+// CapturePersistentVolumeClaim is exported for testing
+func (r *Reporter) CapturePersistentVolumeClaim(f func(xfer.Request, string, string) xfer.Response) func(xfer.Request) xfer.Response {
 	return func(req xfer.Request) xfer.Response {
-		uid, ok := report.ParsePersistentVolumeNodeID(req.NodeID)
+		uid, ok := report.ParsePersistentVolumeClaimNodeID(req.NodeID)
 		if !ok {
 			return xfer.ResponseErrorf("Invalid ID: %s", req.NodeID)
 		}
-		// find pod by UID
-		var persistentVolume PersistentVolume
-		r.client.WalkPersistentVolumes(func(p PersistentVolume) error {
+		// find persistent volume claim by UID
+		var persistentVolumeClaim PersistentVolumeClaim
+
+		r.client.WalkPersistentVolumeClaims(func(p PersistentVolumeClaim) error {
 			if p.UID() == uid {
-				persistentVolume = p
+				persistentVolumeClaim = p
 			}
 			return nil
 		})
-		if persistentVolume == nil {
+		if persistentVolumeClaim == nil {
 			return xfer.ResponseErrorf("Persistent Volume not found: %s", uid)
 		}
-		return f(req, persistentVolume.Name())
+		return f(req, persistentVolumeClaim.Namespace(), persistentVolumeClaim.Name())
 	}
 }
 
@@ -173,7 +181,8 @@ func (r *Reporter) ScaleDown(req xfer.Request, namespace, id string) xfer.Respon
 func (r *Reporter) registerControls() {
 	controls := map[string]xfer.ControlHandlerFunc{
 		GetLogs:              r.CapturePod(r.GetLogs),
-		CreateSnapshot:       r.CapturePersistentVolume(r.createSnapshot),
+		CloneSnapshot:        r.CaptureVolumeSnapshot(r.cloneSnapshot),
+		CreateSnapshot:       r.CapturePersistentVolumeClaim(r.createSnapshot),
 		DeletePod:            r.CapturePod(r.deletePod),
 		DeleteVolumeSnapshot: r.CaptureVolumeSnapshot(r.deleteVolumeSnapshot),
 		ScaleUp:              r.CaptureDeployment(r.ScaleUp),
@@ -185,6 +194,7 @@ func (r *Reporter) registerControls() {
 func (r *Reporter) deregisterControls() {
 	controls := []string{
 		GetLogs,
+		CloneSnapshot,
 		CreateSnapshot,
 		DeletePod,
 		DeleteVolumeSnapshot,

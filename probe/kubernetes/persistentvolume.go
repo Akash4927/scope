@@ -54,5 +54,5 @@ func (p *persistentVolume) GetNode(probeID string) report.Node {
 		StorageClassName:      p.Spec.StorageClassName,
 		Status:                string(p.Status.Phase),
 		AccessModes:           p.GetAccessMode(),
-	}).WithLatestActiveControls(CreateSnapshot)
+	})
 }
