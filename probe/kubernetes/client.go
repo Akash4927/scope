@@ -8,6 +8,8 @@ import (
 
 	"github.com/weaveworks/common/backoff"
 
+	snapshotv1 "github.com/openebs/external-storage/snapshot/pkg/apis/volumesnapshot/v1"
+	snapshotclient "github.com/openebs/external-storage/snapshot/pkg/client/clientset/versioned"
 	ndmv1alpha1 "github.com/openebs/node-disk-manager/pkg/apis/openebs.io/v1alpha1"
 	ndmclient "github.com/openebs/node-disk-manager/pkg/client/clientset/versioned"
 	log "github.com/sirupsen/logrus"
@@ -44,6 +46,8 @@ type Client interface {
 	WalkPersistentVolumeClaims(f func(PersistentVolumeClaim) error) error
 	WalkStorageClasses(f func(StorageClass) error) error
 	WalkDisks(f func(Disk) error) error
+	WalkVolumeSnapshots(f func(VolumeSnapshot) error) error
+	WalkVolumeSnapshotDatas(f func(VolumeSnapshotData) error) error
 
 	WatchPods(f func(Event, Pod))
 
@@ -58,6 +62,7 @@ type client struct {
 	quit                       chan struct{}
 	client                     *kubernetes.Clientset
 	ndmClient                  *ndmclient.Clientset
+	snapshotClient             *snapshotclient.Clientset
 	podStore                   cache.Store
 	serviceStore               cache.Store
 	deploymentStore            cache.Store
@@ -71,6 +76,8 @@ type client struct {
 	persistentVolumeClaimStore cache.Store
 	storageClassStore          cache.Store
 	diskStore                  cache.Store
+	volumeSnapshotStore        cache.Store
+	volumeSnapshotDataStore    cache.Store
 
 	podWatchesMutex sync.Mutex
 	podWatches      []func(Event, Pod)
@@ -144,10 +151,16 @@ func NewClient(config ClientConfig) (Client, error) {
 		return nil, err
 	}
 
+	sc, err := snapshotclient.NewForConfig(restConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	result := &client{
-		quit:      make(chan struct{}),
-		client:    c,
-		ndmClient: nc,
+		quit:           make(chan struct{}),
+		client:         c,
+		ndmClient:      nc,
+		snapshotClient: sc,
 	}
 
 	result.podStore = NewEventStore(result.triggerPodWatches, cache.MetaNamespaceKeyFunc)
@@ -165,6 +178,8 @@ func NewClient(config ClientConfig) (Client, error) {
 	result.persistentVolumeClaimStore = result.setupStore("persistentvolumeclaims")
 	result.storageClassStore = result.setupStore("storageclasses")
 	result.diskStore = result.setupStore("disks")
+	result.volumeSnapshotStore = result.setupStore("volumesnapshots")
+	result.volumeSnapshotDataStore = result.setupStore("volumesnapshotdatas")
 
 	return result, nil
 }
@@ -220,6 +235,10 @@ func (c *client) clientAndType(resource string) (rest.Interface, interface{}, er
 	case "disks":
 		//ToDo: implement isResourceSupported to avoid any runtime panic
 		return c.ndmClient.OpenebsV1alpha1().RESTClient(), &ndmv1alpha1.Disk{}, nil
+	case "volumesnapshots":
+		return c.snapshotClient.VolumesnapshotV1().RESTClient(), &snapshotv1.VolumeSnapshot{}, nil
+	case "volumesnapshotdatas":
+		return c.snapshotClient.VolumesnapshotV1().RESTClient(), &snapshotv1.VolumeSnapshotData{}, nil
 	case "cronjobs":
 		ok, err := c.isResourceSupported(c.client.BatchV1beta1().RESTClient().APIVersion(), resource)
 		if err != nil {
@@ -408,6 +427,26 @@ func (c *client) WalkNamespaces(f func(NamespaceResource) error) error {
 	for _, m := range c.namespaceStore.List() {
 		namespace := m.(*apiv1.Namespace)
 		if err := f(NewNamespace(namespace)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *client) WalkVolumeSnapshots(f func(VolumeSnapshot) error) error {
+	for _, m := range c.volumeSnapshotStore.List() {
+		volumeSnapshot := m.(*snapshotv1.VolumeSnapshot)
+		if err := f(NewVolumeSnapshot(volumeSnapshot)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *client) WalkVolumeSnapshotDatas(f func(VolumeSnapshotData) error) error {
+	for _, m := range c.volumeSnapshotDataStore.List() {
+		volumeSnapshotData := m.(*snapshotv1.VolumeSnapshotData)
+		if err := f(NewVolumeSnapshotData(volumeSnapshotData)); err != nil {
 			return err
 		}
 	}

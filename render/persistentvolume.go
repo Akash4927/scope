@@ -14,6 +14,7 @@ var KubernetesVolumesRenderer = MakeReduce(
 	PodToVolumeRenderer,
 	PVCToStorageClassRenderer,
 	PVToControllerRenderer,
+	VolumeSnapshotRenderer,
 )
 
 // VolumesRenderer is a Renderer which produces a renderable kubernetes PV & PVC
@@ -113,6 +114,27 @@ func (v pvTocontrollerRenderer) Render(rpt report.Report) Nodes {
 			}
 		}
 		nodes[pvNodeID] = p
+	}
+	return Nodes{Nodes: nodes}
+}
+
+var VolumeSnapshotRenderer = volumeSnapshotRenderer{}
+
+type volumeSnapshotRenderer struct{}
+
+func (v volumeSnapshotRenderer) Render(rpt report.Report) Nodes {
+	nodes := make(report.Nodes)
+	for volumeSnapshotID, volumeSnapshotNode := range rpt.VolumeSnapshot.Nodes {
+		snapshotData, _ := volumeSnapshotNode.Latest.Lookup(kubernetes.SnapshotData)
+		for volumeSnapshotDataID, volumeSnapshotDataNode := range rpt.VolumeSnapshotData.Nodes {
+			snapshotDataName, _ := volumeSnapshotDataNode.Latest.Lookup(kubernetes.Name)
+			if snapshotDataName == snapshotData {
+				volumeSnapshotNode.Adjacency = volumeSnapshotNode.Adjacency.Add(volumeSnapshotDataNode.ID)
+				volumeSnapshotNode.Children = volumeSnapshotNode.Children.Add(volumeSnapshotDataNode)
+			}
+			nodes[volumeSnapshotDataID] = volumeSnapshotDataNode
+		}
+		nodes[volumeSnapshotID] = volumeSnapshotNode
 	}
 	return Nodes{Nodes: nodes}
 }

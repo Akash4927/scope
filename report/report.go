@@ -32,6 +32,8 @@ const (
 	PersistentVolumeClaim = "persistent_volume_claim"
 	StorageClass          = "storage_class"
 	Disk                  = "disk"
+	VolumeSnapshot        = "volume_snapshot"
+	VolumeSnapshotData    = "volume_snapshot-data"
 
 	// Shapes used for different nodes
 	Circle         = "circle"
@@ -73,6 +75,8 @@ var topologyNames = []string{
 	PersistentVolumeClaim,
 	StorageClass,
 	Disk,
+	VolumeSnapshot,
+	VolumeSnapshotData,
 }
 
 // Report is the core data type. It's produced by probes, and consumed and
@@ -176,6 +180,12 @@ type Report struct {
 	// Disk represent all NDM Disks on hosts running probes.
 	// Metadata is limited for now, more to come later.
 	Disk Topology
+
+	// VolumeSnapshot represent all Kubernetes Volume Snapshots on hosts running probes.
+	VolumeSnapshot Topology
+
+	// VolumeSnapshotData represent all Kubernetes Volume Snapshot Datas on hosts running probes.
+	VolumeSnapshotData Topology
 
 	DNS DNSRecords
 
@@ -285,6 +295,14 @@ func MakeReport() Report {
 		Disk: MakeTopology().
 			WithShape(Square).
 			WithLabel("disk", "disks"),
+
+		VolumeSnapshot: MakeTopology().
+			WithShape(Triangle).
+			WithLabel("volume snapshot", "volume snapshots"),
+
+		VolumeSnapshotData: MakeTopology().
+			WithShape(Pentagon).
+			WithLabel("volume snapshot data", "volume snapshot datas"),
 
 		DNS: DNSRecords{},
 
@@ -400,6 +418,10 @@ func (r *Report) topology(name string) *Topology {
 		return &r.StorageClass
 	case Disk:
 		return &r.Disk
+	case VolumeSnapshot:
+		return &r.VolumeSnapshot
+	case VolumeSnapshotData:
+		return &r.VolumeSnapshotData
 	}
 	return nil
 }
