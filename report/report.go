@@ -33,7 +33,7 @@ const (
 	StorageClass          = "storage_class"
 	Disk                  = "disk"
 	VolumeSnapshot        = "volume_snapshot"
-	VolumeSnapshotData    = "volume_snapshot-data"
+	VolumeSnapshotData    = "volume_snapshot_data"
 
 	// Shapes used for different nodes
 	Circle         = "circle"
@@ -47,6 +47,8 @@ const (
 	Cylinder       = "cylinder"
 	DottedCylinder = "dottedcylinder"
 	StorageSheet   = "storagesheet"
+	DottedSnapshot = "dottedvolumesnapshot"
+	Snapshot       = "volumesnapshot"
 
 	// Used when counting the number of containers
 	ContainersKey = "containers"
@@ -297,11 +299,11 @@ func MakeReport() Report {
 			WithLabel("disk", "disks"),
 
 		VolumeSnapshot: MakeTopology().
-			WithShape(Triangle).
+			WithShape(DottedSnapshot).
 			WithLabel("volume snapshot", "volume snapshots"),
 
 		VolumeSnapshotData: MakeTopology().
-			WithShape(Pentagon).
+			WithShape(Snapshot).
 			WithLabel("volume snapshot data", "volume snapshot datas"),
 
 		DNS: DNSRecords{},
