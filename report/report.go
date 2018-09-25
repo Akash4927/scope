@@ -44,6 +44,8 @@ const (
 	Cylinder       = "cylinder"
 	DottedCylinder = "dottedcylinder"
 	StorageSheet   = "sheet"
+	Camera         = "camera"
+	None           = "none"
 
 	// Used when counting the number of containers
 	ContainersKey = "containers"
