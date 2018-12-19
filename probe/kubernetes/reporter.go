@@ -477,6 +477,12 @@ func (r *Reporter) serviceTopology() (report.Topology, []Service, error) {
 			WithTableTemplates(TableTemplates)
 		services = []Service{}
 	)
+	result.Controls.AddControl(report.Control{
+		ID:    DescribeService,
+		Human: "Describe",
+		Icon:  "fa fa-file-text",
+		Rank:  0,
+	})
 	err := r.client.WalkServices(func(s Service) error {
 		result.AddNode(s.GetNode(r.probeID))
 		services = append(services, s)
@@ -494,6 +500,12 @@ func (r *Reporter) deploymentTopology() (report.Topology, []Deployment, error) {
 		deployments = []Deployment{}
 	)
 	result.Controls.AddControls(ScalingControls)
+	result.Controls.AddControl(report.Control{
+		ID:    DescribeDeployment,
+		Human: "Describe",
+		Icon:  "fa fa-file-text",
+		Rank:  2,
+	})
 
 	err := r.client.WalkDeployments(func(d Deployment) error {
 		result.AddNode(d.GetNode(r.probeID))
@@ -509,6 +521,12 @@ func (r *Reporter) daemonSetTopology() (report.Topology, []DaemonSet, error) {
 		WithMetadataTemplates(DaemonSetMetadataTemplates).
 		WithMetricTemplates(DaemonSetMetricTemplates).
 		WithTableTemplates(TableTemplates)
+	result.Controls.AddControl(report.Control{
+		ID:    DescribeDaemonSet,
+		Human: "Describe",
+		Icon:  "fa fa-file-text",
+		Rank:  0,
+	})
 	err := r.client.WalkDaemonSets(func(d DaemonSet) error {
 		result.AddNode(d.GetNode(r.probeID))
 		daemonSets = append(daemonSets, d)
@@ -523,6 +541,12 @@ func (r *Reporter) statefulSetTopology() (report.Topology, []StatefulSet, error)
 		WithMetadataTemplates(StatefulSetMetadataTemplates).
 		WithMetricTemplates(StatefulSetMetricTemplates).
 		WithTableTemplates(TableTemplates)
+	result.Controls.AddControl(report.Control{
+		ID:    DescribeStatefulSet,
+		Human: "Describe",
+		Icon:  "fa fa-file-text",
+		Rank:  0,
+	})
 	err := r.client.WalkStatefulSets(func(s StatefulSet) error {
 		result.AddNode(s.GetNode(r.probeID))
 		statefulSets = append(statefulSets, s)
@@ -537,6 +561,12 @@ func (r *Reporter) cronJobTopology() (report.Topology, []CronJob, error) {
 		WithMetadataTemplates(CronJobMetadataTemplates).
 		WithMetricTemplates(CronJobMetricTemplates).
 		WithTableTemplates(TableTemplates)
+	result.Controls.AddControl(report.Control{
+		ID:    DescribeCronJob,
+		Human: "Describe",
+		Icon:  "fa fa-file-text",
+		Rank:  0,
+	})
 	err := r.client.WalkCronJobs(func(c CronJob) error {
 		result.AddNode(c.GetNode(r.probeID))
 		cronJobs = append(cronJobs, c)
@@ -550,8 +580,14 @@ func (r *Reporter) persistentVolumeTopology() (report.Topology, []PersistentVolu
 	result := report.MakeTopology().
 		WithMetadataTemplates(PersistentVolumeMetadataTemplates).
 		WithTableTemplates(TableTemplates)
+	result.Controls.AddControl(report.Control{
+		ID:    DescribePV,
+		Human: "Describe",
+		Icon:  "fa fa-file-text",
+		Rank:  0,
+	})
 	err := r.client.WalkPersistentVolumes(func(p PersistentVolume) error {
-		result.AddNode(p.GetNode())
+		result.AddNode(p.GetNode(r.probeID))
 		persistentVolumes = append(persistentVolumes, p)
 		return nil
 	})
@@ -569,6 +605,12 @@ func (r *Reporter) persistentVolumeClaimTopology() (report.Topology, []Persisten
 		Icon:  "fa fa-camera",
 		Rank:  0,
 	})
+	result.Controls.AddControl(report.Control{
+		ID:    DescribePVC,
+		Human: "Describe",
+		Icon:  "fa fa-file-text",
+		Rank:  1,
+	})
 	err := r.client.WalkPersistentVolumeClaims(func(p PersistentVolumeClaim) error {
 		result.AddNode(p.GetNode(r.probeID))
 		persistentVolumeClaims = append(persistentVolumeClaims, p)
@@ -582,8 +624,14 @@ func (r *Reporter) storageClassTopology() (report.Topology, []StorageClass, erro
 	result := report.MakeTopology().
 		WithMetadataTemplates(StorageClassMetadataTemplates).
 		WithTableTemplates(TableTemplates)
+	result.Controls.AddControl(report.Control{
+		ID:    DescribeSC,
+		Human: "Describe",
+		Icon:  "fa fa-file-text",
+		Rank:  0,
+	})
 	err := r.client.WalkStorageClasses(func(p StorageClass) error {
-		result.AddNode(p.GetNode())
+		result.AddNode(p.GetNode(r.probeID))
 		storageClasses = append(storageClasses, p)
 		return nil
 	})
@@ -727,6 +775,12 @@ func (r *Reporter) podTopology(services []Service, deployments []Deployment, dae
 		Human: "Delete",
 		Icon:  "far fa-trash-alt",
 		Rank:  1,
+	})
+	pods.Controls.AddControl(report.Control{
+		ID:    DescribePod,
+		Human: "Describe",
+		Icon:  "fa fa-file-text",
+		Rank:  2,
 	})
 	for _, service := range services {
 		selectors = append(selectors, match(
